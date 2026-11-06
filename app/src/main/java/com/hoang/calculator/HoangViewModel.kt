@@ -117,7 +117,9 @@ class HoangViewModel(application: Application) : AndroidViewModel(application) {
             imageUri = defaults.imageUri,
             costFeePer100 = defaults.costFeePer100,
             finalOutputValue = defaults.finalOutputValue,
-            returnRate = defaults.returnRate.coerceIn(10.0, 99.99999999),
+            returnRate = runCatching {
+                java.math.BigDecimal(defaults.returnRate.ifBlank { "0" }).coerceAtLeast(java.math.BigDecimal.ZERO).coerceAtMost(java.math.BigDecimal("99.99999999")).stripTrailingZeros().toPlainString()
+            }.getOrDefault("0"),
             totalWillMade = defaults.totalWillMade,
             outputPerCraft = defaults.outputPerCraft,
             premiumActive = defaults.premiumActive,
@@ -186,7 +188,7 @@ class HoangViewModel(application: Application) : AndroidViewModel(application) {
         updateSeason { season -> when (field) {
             "costFee" -> season.copy(costFeePer100 = value)
             "finalValue" -> season.copy(finalOutputValue = value)
-            "returnRate" -> season.copy(returnRate = value ?: 0.0)
+            "returnRate" -> season.copy(returnRate = value?.let { java.math.BigDecimal.valueOf(it).stripTrailingZeros().toPlainString() } ?: "0")
             "total" -> season.copy(totalWillMade = value)
             "outputPerCraft" -> season.copy(outputPerCraft = value ?: 1.0)
             "craftFee" -> season.copy(craftFee = value ?: 0.0)

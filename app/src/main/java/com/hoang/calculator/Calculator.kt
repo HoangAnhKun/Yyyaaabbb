@@ -14,13 +14,13 @@ data class OutputResult(val product: OutputProduct, val amount: Double, val gros
 data class CalculationResult(val crafts: Double?, val nutritionFee: Double?, val inputs: List<InputResult>, val leftovers: List<LeftoverResult>, val outputs: List<OutputResult>, val totalExpenses: Double, val totalIncome: Double, val profit: Double, val roi: Double?, val profitPerItem: Double?, val breakEvenPrice: Double?, val adjustmentTotal: Double)
 
 object Calculator {
-    fun floorConsumedRate(consumed: Long, rateTenths: Int): Long {
+    fun floorConsumedRate(consumed: Long, scaledRate12: BigDecimal): Long {
         val consumedExact = BigDecimal.valueOf(consumed)
-        val rateExact = BigDecimal(rateTenths).divide(BigDecimal(1000), 12, RoundingMode.DOWN)
+        val rateExact = scaledRate12.setScale(12, RoundingMode.DOWN)
         return consumedExact.multiply(rateExact).setScale(0, RoundingMode.FLOOR).longValueExact()
     }
 
-    fun calculateReturnRate(demand: Double, returnRatePercentTenths: Int): Pair<Double, Double> {
+    fun calculateReturnRate(demand: Double, scaledRate12: BigDecimal): Pair<Double, Double> {
         if (!demand.isFinite() || demand <= 0) return 0.0 to 0.0
         val d = floor(demand).toLong()
         if (d <= 0) return 0.0 to 0.0
@@ -28,20 +28,20 @@ object Calculator {
         var high = d
         while (low < high) {
             val mid = low + (high - low) / 2
-            if (simulate(mid, d, returnRatePercentTenths).success) high = mid else low = mid + 1
+            if (simulate(mid, d, scaledRate12).success) high = mid else low = mid + 1
         }
-        val result = simulate(low, d, returnRatePercentTenths)
+        val result = simulate(low, d, scaledRate12)
         return low.toDouble() to result.stock.toDouble()
     }
 
-    private fun simulate(start: Long, demand: Long, rateTenths: Int): SimulatedStock {
+    private fun simulate(start: Long, demand: Long, scaledRate12: BigDecimal): SimulatedStock {
         var stock = start
         var used = 0L
         while (used < demand && stock > 0) {
             val u = minOf(stock, demand - used)
             used += u
             stock -= u
-            val gained = floorConsumedRate(u, rateTenths)
+            val gained = floorConsumedRate(u, scaledRate12)
             stock += gained
         }
         return SimulatedStock(used >= demand, stock)
@@ -54,10 +54,12 @@ object Calculator {
         val perCraft = season.outputPerCraft
         val crafts = if (total != null && total.isFinite() && perCraft.isFinite() && perCraft > 0) ceil(total / perCraft) else null
         val nutrition = if (season.finalOutputValue != null && total != null && season.costFeePer100 != null && season.finalOutputValue.isFinite() && total.isFinite() && season.costFeePer100.isFinite()) season.finalOutputValue * total * season.costFeePer100 * 0.001125 else null
-        val rateTenths = BigDecimal.valueOf(season.returnRate).multiply(BigDecimal.TEN).setScale(0, RoundingMode.HALF_UP).toInt().coerceAtLeast(0)
+        val scaledRate12 = runCatching {
+            BigDecimal(season.returnRate.ifBlank { "0" }).divide(BigDecimal(100), 12, RoundingMode.DOWN)
+        }.getOrDefault(BigDecimal.ZERO)
         val inputs = season.inputs.map { material ->
             val demand = if (crafts != null && material.amountPerCraft != null && material.amountPerCraft.isFinite()) crafts * material.amountPerCraft else Double.NaN
-            val solved = if (material.useReturnRate && demand.isFinite()) calculateReturnRate(demand, rateTenths) else (if (demand.isFinite()) demand else 0.0) to 0.0
+            val solved = if (material.useReturnRate && demand.isFinite()) calculateReturnRate(demand, scaledRate12) else (if (demand.isFinite()) demand else 0.0) to 0.0
             val purchase = if (demand.isFinite()) solved.first else Double.NaN
             val gross = if (purchase.isFinite() && material.price != null) purchase * material.price else null
             val setup = if (gross != null && material.buyMethod == "Buy Order") gross * 0.025 else gross?.let { 0.0 }
@@ -102,14 +104,21 @@ object Calculator {
         }
         val text = when {
             safeRounding != "Never" && absolute >= 1_000_000 -> {
-                val value = (absolute / 1_000_000).let { if (it % 1.0 == 0.0) String.format(Locale.US, "%.0f", it) else String.format(Locale.US, "%.1f", it) }
-                "${value}M"
+                val scaled = BigDecimal.valueOf(absolute / 1_000_000).setScale(precision.coerceIn(0, 6), RoundingMode.HALF_UP)
+                "${scaled.stripTrailingZeros().toPlainString()}M"
             }
             safeRounding != "Never" && absolute >= 1_000 -> {
-                val value = (absolute / 1_000).let { if (it % 1.0 == 0.0) String.format(Locale.US, "%.0f", it) else String.format(Locale.US, "%.1f", it) }
-                "${value}k"
+                val scaled = BigDecimal.valueOf(absolute / 1_000).setScale(precision.coerceIn(0, 6), RoundingMode.HALF_UP)
+                if (scaled >= BigDecimal(1000)) {
+                    val million = BigDecimal.valueOf(absolute / 1_000_000).setScale(precision.coerceIn(0, 6), RoundingMode.HALF_UP)
+                    "${million.stripTrailingZeros().toPlainString()}M"
+                } else {
+                    "${scaled.stripTrailingZeros().toPlainString()}k"
+                }
             }
-            absolute >= 100 -> String.format(Locale.US, "%.0f", absolute)
+            absolute >= 100 -> BigDecimal.valueOf(absolute).setScale(precision.coerceIn(0, 6), RoundingMode.HALF_UP).let {
+                if (precision == 0) it.toPlainString() else it.stripTrailingZeros().toPlainString()
+            }
             else -> String.format(Locale.US, "%.${precision.coerceIn(0, 6)}f", absolute).trimEnd('0').trimEnd('.')
         }
         return sign + text

@@ -2,3 +2,6 @@
 build/
 app/build/
 local.properties
+apkfinalbuild/
+.kotlin/
+*.apk

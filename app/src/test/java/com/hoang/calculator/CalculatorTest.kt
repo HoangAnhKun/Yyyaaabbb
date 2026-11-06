@@ -4,11 +4,13 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.math.BigDecimal
 
 class CalculatorTest {
     @Test
     fun solverExampleIsSmallestPurchase() {
-        val (purchase, leftover) = Calculator.calculateReturnRate(183.0, 367)
+        val rate = BigDecimal("0.367000000000")
+        val (purchase, leftover) = Calculator.calculateReturnRate(183.0, rate)
         assertEquals(119.0, purchase, 0.0001)
         assertEquals(0.0, leftover, 0.0001)
         for (b in 0 until purchase.toInt()) {
@@ -26,14 +28,14 @@ class CalculatorTest {
 
     @Test
     fun tenPerCraftTimesFifty() {
-        val result = Calculator.calculateReturnRate(500.0, 367)
+        val result = Calculator.calculateReturnRate(500.0, BigDecimal("0.367000000000"))
         assertEquals(320.0, result.first, 0.0001)
     }
 
     @Test
     fun premiumChangesTax() {
-        val standard = Calculator.calculate(Season(totalWillMade = 10.0, returnRate = 0.0, premiumActive = false, outputs = listOf(OutputProduct(price = 100.0))))
-        val premium = Calculator.calculate(Season(totalWillMade = 10.0, returnRate = 0.0, premiumActive = true, outputs = listOf(OutputProduct(price = 100.0))))
+        val standard = Calculator.calculate(Season(totalWillMade = 10.0, returnRate = "0", premiumActive = false, outputs = listOf(OutputProduct(price = 100.0))))
+        val premium = Calculator.calculate(Season(totalWillMade = 10.0, returnRate = "0", premiumActive = true, outputs = listOf(OutputProduct(price = 100.0))))
         assertEquals(80.0, standard.outputs.single().salesTax!!, 0.0001)
         assertEquals(40.0, premium.outputs.single().salesTax!!, 0.0001)
     }
@@ -50,8 +52,8 @@ class CalculatorTest {
 
     @Test
     fun sellLeftoverToggleControlsIncomeAndDash() {
-        val on = Calculator.calculate(Season(totalWillMade = 3.0, returnRate = 36.7, sellLeftover = true, inputs = listOf(InputMaterial(price = 100.0, amountPerCraft = 1.0, useReturnRate = true))))
-        val off = Calculator.calculate(Season(totalWillMade = 3.0, returnRate = 36.7, sellLeftover = false, inputs = listOf(InputMaterial(price = 100.0, amountPerCraft = 1.0, useReturnRate = true))))
+        val on = Calculator.calculate(Season(totalWillMade = 3.0, returnRate = "36.7", sellLeftover = true, inputs = listOf(InputMaterial(price = 100.0, amountPerCraft = 1.0, useReturnRate = true))))
+        val off = Calculator.calculate(Season(totalWillMade = 3.0, returnRate = "36.7", sellLeftover = false, inputs = listOf(InputMaterial(price = 100.0, amountPerCraft = 1.0, useReturnRate = true))))
         assertTrue(on.leftovers.single().afterFees != null)
         assertEquals("—", Calculator.formatCompact(off.leftovers.single().grossIncome))
         assertNull(off.leftovers.single().grossIncome)
@@ -77,11 +79,13 @@ class CalculatorTest {
         assertEquals("-1k", Calculator.formatCompact(-1000.0, "Always", 2))
         assertEquals("999", Calculator.formatCompact(999.0, "Always", 2))
         assertEquals("100M", Calculator.formatCompact(100000000.0, "Always", 0))
+        assertEquals("999", Calculator.formatCompact(999.0, "Always", 0))
+        assertEquals("999.95k", Calculator.formatCompact(999950.0, "Always", 2))
     }
 
     @Test
     fun exactConsumedRateFloor() {
-        assertEquals(183L, Calculator.floorConsumedRate(500L, 367))
+        assertEquals(183L, Calculator.floorConsumedRate(500L, BigDecimal("0.367000000000")))
     }
 
     @Test

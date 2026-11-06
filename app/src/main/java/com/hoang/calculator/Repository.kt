@@ -5,6 +5,7 @@ import com.google.gson.Gson
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
+import java.math.BigDecimal
 
 data class PersistedState(val settings: AppSettings = AppSettings(), val seasons: List<Season> = emptyList(), val openSeasonIds: List<String> = emptyList(), val selectedSeasonId: String? = null)
 
@@ -16,7 +17,10 @@ class Repository(private val context: Context) {
     fun load(): PersistedState = try {
         if (file.exists()) {
             val loaded = gson.fromJson(file.readText(), PersistedState::class.java) ?: PersistedState()
-            loaded.copy(settings = loaded.settings.normalized())
+            loaded.copy(
+                settings = loaded.settings.normalized(),
+                seasons = loaded.seasons.map { it.copy(returnRate = normalizeReturnRate(it.returnRate)) }
+            )
         } else PersistedState()
     } catch (_: Exception) {
         PersistedState()
@@ -41,6 +45,14 @@ class Repository(private val context: Context) {
 
     fun import(input: InputStream): PersistedState = input.use {
         val loaded = gson.fromJson(it.bufferedReader().readText(), PersistedState::class.java) ?: PersistedState()
-        loaded.copy(settings = loaded.settings.normalized())
+        loaded.copy(
+            settings = loaded.settings.normalized(),
+            seasons = loaded.seasons.map { it.copy(returnRate = normalizeReturnRate(it.returnRate)) }
+        )
     }
+
+    private fun normalizeReturnRate(value: String): String = runCatching {
+        val rate = BigDecimal(value.ifBlank { "0" }).coerceAtLeast(BigDecimal.ZERO).coerceAtMost(BigDecimal("99.99999999"))
+        rate.stripTrailingZeros().toPlainString()
+    }.getOrDefault("0")
 }

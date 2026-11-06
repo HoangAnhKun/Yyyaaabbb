@@ -1,6 +1,7 @@
 package com.hoang.calculator
 
 import androidx.compose.runtime.Immutable
+import java.math.BigDecimal
 import java.util.UUID
 
 @Immutable
@@ -43,7 +44,7 @@ data class Season(
     val imageUri: String = "",
     val costFeePer100: Double? = null,
     val finalOutputValue: Double? = null,
-    val returnRate: Double = 0.0,
+    val returnRate: String = "0",
     val totalWillMade: Double? = null,
     val outputPerCraft: Double = 1.0,
     val premiumActive: Boolean = false,
@@ -157,7 +158,10 @@ fun AppSettings.normalized(): AppSettings = copy(
     lastBuyMethod = normalizeBuyMethod(lastBuyMethod),
     lastSellMethod = normalizeSellMethod(lastSellMethod),
     defaultSeason = defaultSeason.copy(
-        returnRate = defaultSeason.returnRate.coerceIn(10.0, 99.99999999),
+        returnRate = runCatching {
+            val rate = BigDecimal(defaultSeason.returnRate.ifBlank { "0" }).coerceAtLeast(BigDecimal.ZERO).coerceAtMost(BigDecimal("99.99999999"))
+            rate.stripTrailingZeros().toPlainString()
+        }.getOrDefault("0"),
         inputs = defaultSeason.inputs.map { it.copy(buyLocation = normalizeLocation(it.buyLocation), buyMethod = normalizeBuyMethod(it.buyMethod)) },
         outputs = defaultSeason.outputs.map { it.copy(sellLocation = normalizeLocation(it.sellLocation), sellMethod = normalizeSellMethod(it.sellMethod)) }
     )

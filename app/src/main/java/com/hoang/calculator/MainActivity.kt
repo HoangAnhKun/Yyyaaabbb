@@ -601,14 +601,20 @@ fun PanelCard(state: UiState, viewModel: HoangViewModel, season: Season) {
 @Composable
 fun RecipeCard(state: UiState, viewModel: HoangViewModel, season: Season) {
     ZoneCard("recipe", state, "Recipe Overall Settings", viewModel) {
-        NumberField("Nutrition fee /100", season.costFeePer100, { viewModel.updateRecipe("costFee", it) }, state)
-        NumberField("Item value (nutrition)", season.finalOutputValue, { viewModel.updateRecipe("finalValue", it) }, state)
-        NumberField("Return Rate", season.returnRate.takeIf { it != 0.0 }, { viewModel.updateRecipe("returnRate", it) }, state)
-        NumberField("Total Will Made", season.totalWillMade, { viewModel.updateRecipe("total", it) }, state)
-        NumberField("Output Amount Per Craft", season.outputPerCraft, { viewModel.updateRecipe("outputPerCraft", it ?: 1.0) }, state)
+        val nutritionSheet = remember { mutableStateOf(false) }
+        val itemValueSheet = remember { mutableStateOf(false) }
+        val returnRateSheet = remember { mutableStateOf(false) }
+        val totalSheet = remember { mutableStateOf(false) }
+        val outputPerCraftSheet = remember { mutableStateOf(false) }
+        val craftFeeSheet = remember { mutableStateOf(false) }
+        NumberField("Nutrition fee /100", season.costFeePer100, { viewModel.updateRecipe("costFee", it) }, state, sheetVisibleState = nutritionSheet, onNext = { itemValueSheet.value = true })
+        NumberField("Item value (nutrition)", season.finalOutputValue, { viewModel.updateRecipe("finalValue", it) }, state, sheetVisibleState = itemValueSheet, onNext = { returnRateSheet.value = true })
+        NumberField("Return Rate", season.returnRate.takeIf { it != "0" }?.let { Calculator.parseNumber(it) }, { viewModel.updateRecipe("returnRate", it) }, state, sheetVisibleState = returnRateSheet, onNext = { totalSheet.value = true })
+        NumberField("Total Will Made", season.totalWillMade, { viewModel.updateRecipe("total", it) }, state, sheetVisibleState = totalSheet, onNext = { outputPerCraftSheet.value = true })
+        NumberField("Output Amount Per Craft", season.outputPerCraft, { viewModel.updateRecipe("outputPerCraft", it ?: 1.0) }, state, sheetVisibleState = outputPerCraftSheet, onNext = { craftFeeSheet.value = true })
         ToggleRow("Premium Active", season.premiumActive) { viewModel.toggleRecipe("premium") }
         ToggleRow("Sell Leftover", season.sellLeftover) { viewModel.toggleRecipe("leftover") }
-        NumberField("Craft Fee", season.craftFee.takeIf { it != 0.0 }, { viewModel.updateRecipe("craftFee", it) }, state, allowNegative = true)
+        NumberField("Craft Fee", season.craftFee.takeIf { it != 0.0 }, { viewModel.updateRecipe("craftFee", it) }, state, allowNegative = true, sheetVisibleState = craftFeeSheet)
     }
 }
 
@@ -623,6 +629,8 @@ fun InputsCard(state: UiState, viewModel: HoangViewModel, season: Season, result
         }
         season.inputs.forEachIndexed { index, input ->
             val inputResult = result?.inputs?.firstOrNull { it.material.id == input.id }
+            val unitPriceSheet = remember(input.id) { mutableStateOf(false) }
+            val qtyPerCraftSheet = remember("${input.id}-qty") { mutableStateOf(false) }
             Card(Modifier.fillMaxWidth().padding(vertical = 5.dp), colors = CardDefaults.cardColors(containerColor = parseColor(state.settings.textBoxHex, Color(0xFF303030)))) {
                 Column(Modifier.padding(10.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -639,8 +647,8 @@ fun InputsCard(state: UiState, viewModel: HoangViewModel, season: Season, result
                             viewModel.updateSetting { settings -> settings.copy(lastBuyMethod = it) }
                         }
                     }
-                    NumberField("Unit price", input.price, { viewModel.updateInput(input.id) { item -> item.copy(price = it) } }, state)
-                    NumberField("Qty per craft", input.amountPerCraft, { viewModel.updateInput(input.id) { item -> item.copy(amountPerCraft = it) } }, state)
+                    NumberField("Unit price", input.price, { viewModel.updateInput(input.id) { item -> item.copy(price = it) } }, state, sheetVisibleState = unitPriceSheet, onNext = { qtyPerCraftSheet.value = true })
+                    NumberField("Qty per craft", input.amountPerCraft, { viewModel.updateInput(input.id) { item -> item.copy(amountPerCraft = it) } }, state, sheetVisibleState = qtyPerCraftSheet)
                     ToggleRow("Use return rate", input.useReturnRate) { viewModel.updateInput(input.id) { it.copy(useReturnRate = !it.useReturnRate) } }
                     Text("Real qty needed: ${Calculator.formatCompact(inputResult?.purchase)}")
                     Text("Real cost: ${Calculator.formatCompact(inputResult?.afterFees)}")
@@ -666,6 +674,7 @@ fun OutputsCard(state: UiState, viewModel: HoangViewModel, season: Season, resul
         }
         season.outputs.forEachIndexed { index, output ->
             val outputResult = result?.outputs?.firstOrNull { it.product.id == output.id }
+            val sellPriceSheet = remember(output.id) { mutableStateOf(false) }
             Card(Modifier.fillMaxWidth().padding(vertical = 5.dp), colors = CardDefaults.cardColors(containerColor = parseColor(state.settings.textBoxHex, Color(0xFF303030)))) {
                 Column(Modifier.padding(10.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -682,7 +691,7 @@ fun OutputsCard(state: UiState, viewModel: HoangViewModel, season: Season, resul
                             viewModel.updateSetting { settings -> settings.copy(lastSellMethod = it) }
                         }
                     }
-                    NumberField("Sell price", output.price, { viewModel.updateOutput(output.id) { item -> item.copy(price = it) } }, state)
+                    NumberField("Sell price", output.price, { viewModel.updateOutput(output.id) { item -> item.copy(price = it) } }, state, sheetVisibleState = sellPriceSheet)
                     Text("Net income: ${Calculator.formatCompact(outputResult?.afterFees, state.settings.numberRounding)}")
                     if (state.settings.homeEditMode) Row {
                         IconButton(onClick = { viewModel.moveOutput(output.id, -1) }, enabled = index > 0) { Icon(Icons.Default.KeyboardArrowUp, "Move up") }
@@ -781,10 +790,11 @@ fun BreakdownCard(state: UiState, viewModel: HoangViewModel, season: Season, res
 
                     @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
                     @Composable
-                    fun NumberField(label: String, value: Double?, onValue: (Double?) -> Unit, state: UiState, allowNegative: Boolean = false) {
-                        val display = if (value == null) "" else value.toString().removeSuffix(".0")
+                    fun NumberField(label: String, value: Double?, onValue: (Double?) -> Unit, state: UiState, allowNegative: Boolean = false, onNext: (() -> Unit)? = null, sheetVisibleState: androidx.compose.runtime.MutableState<Boolean>? = null) {
+                        val display = if (value == null) "" else java.math.BigDecimal.valueOf(value).stripTrailingZeros().toPlainString()
                         var field by remember(display) { mutableStateOf(TextFieldValue(display, TextRange(display.length))) }
-                        var sheetVisible by remember { mutableStateOf(false) }
+                        var localSheetVisible by remember { mutableStateOf(false) }
+                        val sheetVisible = sheetVisibleState?.value ?: localSheetVisible
                         val view = LocalView.current
                         LaunchedEffect(field.text) { delay(150); onValue(if (label == "Return Rate") Calculator.parseReturnRateDigits(field.text) else Calculator.parseNumber(field.text)) }
                         Column {
@@ -808,7 +818,7 @@ fun BreakdownCard(state: UiState, viewModel: HoangViewModel, season: Season, res
                                     view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                                 }, modifier = Modifier.widthIn(min = 120.dp).weight(1f, fill = false), label = { Text(label) }, singleLine = true,
                                     keyboardOptions = if (state.settings.keypadEnabled) KeyboardOptions(keyboardType = KeyboardType.Number) else KeyboardOptions(keyboardType = KeyboardType.Decimal))
-                                if (state.settings.keypadEnabled) IconButton(onClick = { sheetVisible = true }, modifier = Modifier.size(48.dp)) { Icon(Icons.Default.Dialpad, "Open keypad") }
+                                if (state.settings.keypadEnabled) IconButton(onClick = { if (sheetVisibleState == null) localSheetVisible = true else sheetVisibleState.value = true }, modifier = Modifier.size(48.dp)) { Icon(Icons.Default.Dialpad, "Open keypad") }
                                 IconButton(onClick = {
                                     val clipboard = view.context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                                     clipboard.setPrimaryClip(ClipData.newPlainText(label, field.text))
@@ -821,143 +831,21 @@ fun BreakdownCard(state: UiState, viewModel: HoangViewModel, season: Season, res
                                 }, modifier = Modifier.size(48.dp)) { Icon(Icons.Default.ContentPaste, "Paste") }
                                 IconButton(onClick = { field = TextFieldValue("", TextRange.Zero); onValue(null) }, modifier = Modifier.size(48.dp)) { Icon(Icons.Default.Delete, "Clear") }
                             }
-                            if (sheetVisible) ModalBottomSheet(onDismissRequest = { sheetVisible = false }) {
-                                val sheetInitial = if (label == "Return Rate") {
-                                    field.text.filter(Char::isDigit)
-                                } else {
-                                    Calculator.parseNumber(field.text)?.toString()?.removeSuffix(".0") ?: ""
-                                }
-                                var sheetValue by remember(sheetInitial) { mutableStateOf(sheetInitial) }
-                                var sheetCursor by remember(sheetInitial) { mutableStateOf(sheetInitial.length) }
-                                Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text(label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                    val sheetNumber = Calculator.parseNumber(sheetValue)
-                                    val sheetFull = if (label == "Return Rate") Calculator.formatReturnRateDigits(sheetValue.filter(Char::isDigit)) else Calculator.formatCompact(sheetNumber, "Never", state.settings.decimalPrecision)
-                                    val rawPrefix = sheetValue.take(sheetCursor.coerceIn(0, sheetValue.length))
-                                    val cursorAt = if (label == "Return Rate") {
-                                        val digitsBefore = rawPrefix.count(Char::isDigit)
-                                        var seen = 0
-                                        if (digitsBefore == 0) 0 else sheetFull.indexOfLast { ch ->
-                                            if (ch.isDigit()) { seen++; seen <= digitsBefore } else false
-                                        }.let { if (it >= 0) it + 1 else sheetFull.length }
-                                    } else {
-                                        val decimalIndex = rawPrefix.indexOf('.')
-                                        if (decimalIndex >= 0 && sheetFull.contains('.')) {
-                                            val decimalOffset = rawPrefix.length - decimalIndex
-                                            val fullDecimal = sheetFull.indexOf('.')
-                                            (fullDecimal + decimalOffset).coerceIn(0, sheetFull.length)
-                                        } else {
-                                            val digitsBefore = rawPrefix.count(Char::isDigit)
-                                            var seen = 0
-                                            if (digitsBefore == 0) 0 else sheetFull.indexOfLast { ch ->
-                                                if (ch.isDigit()) { seen++; seen <= digitsBefore } else false
-                                            }.let { if (it >= 0) it + 1 else sheetFull.length }
-                                        }
-                                    }.coerceIn(0, sheetFull.length)
-                                    val cursorPhase by rememberInfiniteTransition(label = "keypadCursor").animateFloat(
-                                        initialValue = 0f, targetValue = 1f,
-                                        animationSpec = infiniteRepeatable(tween((650 / state.settings.animationSpeed).toInt(), easing = LinearEasing), RepeatMode.Restart),
-                                        label = "cursorBlink"
-                                    )
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(sheetFull.take(cursorAt), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif)
-                                        Text("|", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = if (cursorPhase < 0.5f) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary.copy(alpha = 0f))
-                                        Text(sheetFull.drop(cursorAt), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif)
-                                    }
-                                    IconButton(onClick = {
-                                        field = TextFieldValue(sheetValue, TextRange(sheetValue.length))
-                                        onValue(if (label == "Return Rate") Calculator.parseReturnRateDigits(sheetValue) else Calculator.parseNumber(sheetValue))
-                                        sheetVisible = false
-                                    }, modifier = Modifier.size(48.dp)) { Icon(Icons.Default.ArrowForward, "Next field") }
-                                    val viewForHaptic = LocalView.current
-                                    fun key(action: String) {
-                                        if (state.settings.hapticsEnabled) viewForHaptic.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                        sheetValue = when (action) {
-                                            "C" -> { sheetCursor = 0; "" }
-                                            "Next" -> { sheetCursor = sheetValue.length; sheetValue }
-                                            "Back" -> {
-                                                val index = sheetCursor.coerceIn(0, sheetValue.length)
-                                                if (index > 0) { sheetValue = sheetValue.removeRange(index - 1, index); sheetCursor = index - 1 }
-                                                sheetValue
-                                            }
-                                            "+/-" -> if (allowNegative) if (sheetValue.startsWith("-")) sheetValue.drop(1) else "-$sheetValue" else sheetValue
-                                            "<" -> { sheetCursor = (sheetCursor - 1).coerceAtLeast(0); sheetValue }
-                                            ">" -> { sheetCursor = (sheetCursor + 1).coerceAtMost(sheetValue.length); sheetValue }
-                                            else -> {
-                                                val index = sheetCursor.coerceIn(0, sheetValue.length)
-                                                sheetValue = sheetValue.substring(0, index) + action + sheetValue.substring(index)
-                                                sheetCursor = index + action.length
-                                                sheetValue
-                                            }
-                                        }.filterIndexed { index, char -> char.isDigit() || (char == '.' && !sheetValue.take(index).contains('.')) || (char == '-' && index == 0 && allowNegative) }
-                                    }
-                                    val keys = listOf("1","2","3","C","4","5","6","Next","7","8","9","Back","<","0",">","OK")
-                                    if (state.settings.keypadSymbolChips) {
-                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
-                                            listOf(".", "00", if (allowNegative) "+/-" else "").filter { it.isNotEmpty() }.forEach { chip ->
-                                                androidx.compose.material3.FilterChip(selected = false, onClick = { if (chip == "00") key("00") else key(chip) }, label = { Text(chip) })
-                                            }
-                                        }
-                                    }
-                                    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        keys.chunked(4).forEach { row ->
-                                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                                row.forEach { keyName ->
-                                                    Box(
-                                                        modifier = Modifier.weight(1f).height(48.dp).clip(CircleShape)
-                                                            .background(MaterialTheme.colorScheme.primaryContainer)
-                                                            .combinedClickable(
-                                                                onClick = { if (keyName == "OK") { field = TextFieldValue(sheetValue, TextRange(sheetValue.length)); onValue(if (label == "Return Rate") Calculator.parseReturnRateDigits(sheetValue) else Calculator.parseNumber(sheetValue)); sheetVisible = false } else key(keyName) },
-                                                                onLongClick = if (keyName == "Back") ({ sheetValue = ""; sheetCursor = 0 }) else null
-                                                            ),
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        when (keyName) { "Back" -> Icon(Icons.Default.Backspace, "Backspace"); "Next" -> Icon(Icons.Default.KeyboardTab, "Move cursor to end"); "<" -> Icon(Icons.Default.KeyboardArrowLeft, "Move cursor left"); ">" -> Icon(Icons.Default.KeyboardArrowRight, "Move cursor right"); "OK" -> Icon(Icons.Default.Check, "OK"); "C" -> Icon(Icons.Default.DeleteSweep, "Clear All"); else -> Text(keyName, fontWeight = FontWeight.Bold) }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    if (state.settings.keypadQuickAdjustChips) Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                            listOf(Pair("+1", 1.0), Pair("+10", 10.0), Pair("+100", 100.0), Pair("+1K", 1000.0), Pair("+10K", 10000.0)).forEach { (chipLabel, delta) ->
-                                                androidx.compose.material3.FilterChip(selected = false, onClick = {
-                                                    if (label == "Return Rate") {
-                                                        val current = Calculator.parseReturnRateDigits(sheetValue.filter(Char::isDigit))
-                                                        val adjusted = (current + delta).coerceIn(10.0, 99.99999999)
-                                                        val digits = java.math.BigDecimal.valueOf(adjusted).toPlainString().replace(".", "")
-                                                        sheetValue = digits
-                                                    } else {
-                                                        val current = Calculator.parseNumber(sheetValue) ?: 0.0
-                                                        sheetValue = (current + delta).toString().removeSuffix(".0")
-                                                    }
-                                                    sheetCursor = sheetValue.length
-                                                }, label = { Text(chipLabel) }, modifier = Modifier.weight(1f))
-                                            }
-                                        }
-                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                            listOf(Pair("-1", -1.0), Pair("-10", -10.0), Pair("-100", -100.0), Pair("-1K", -1000.0), Pair("-10K", -10000.0)).forEach { (chipLabel, delta) ->
-                                                androidx.compose.material3.FilterChip(selected = false, onClick = {
-                                                    if (label == "Return Rate") {
-                                                        val current = Calculator.parseReturnRateDigits(sheetValue.filter(Char::isDigit))
-                                                        val adjusted = (current + delta).coerceIn(10.0, 99.99999999)
-                                                        val digits = java.math.BigDecimal.valueOf(adjusted).toPlainString().replace(".", "")
-                                                        sheetValue = digits
-                                                    } else {
-                                                        val current = Calculator.parseNumber(sheetValue) ?: 0.0
-                                                        sheetValue = (current + delta).toString().removeSuffix(".0")
-                                                    }
-                                                    sheetCursor = sheetValue.length
-                                                }, label = { Text(chipLabel) }, modifier = Modifier.weight(1f))
-                                            }
-                                        }
-                                    }
-                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                                        IconButton(onClick = { sheetVisible = false }, modifier = Modifier.size(48.dp)) { Icon(Icons.Default.Close, "Cancel") }
-                                        IconButton(onClick = { field = TextFieldValue(sheetValue, TextRange(sheetValue.length)); onValue(if (label == "Return Rate") Calculator.parseReturnRateDigits(sheetValue) else Calculator.parseNumber(sheetValue)); sheetVisible = false }, modifier = Modifier.size(48.dp)) { Icon(Icons.Default.Check, "OK") }
-                                    }
-                                }
-                            }
+                            if (sheetVisible) KeypadSheet(
+                                label = label,
+                                initialValue = if (label == "Return Rate") field.text.filter(Char::isDigit) else java.math.BigDecimal.valueOf(Calculator.parseNumber(field.text) ?: 0.0).stripTrailingZeros().toPlainString(),
+                                state = state,
+                                allowNegative = allowNegative,
+                                onDismiss = { if (sheetVisibleState == null) localSheetVisible = false else sheetVisibleState.value = false },
+                                onSave = { sheetValue ->
+                                    field = TextFieldValue(sheetValue, TextRange(sheetValue.length))
+                                    onValue(if (label == "Return Rate") Calculator.parseReturnRateDigits(sheetValue) else Calculator.parseNumber(sheetValue))
+                                },
+                                onNext = onNext?.let { next -> {
+                                    if (sheetVisibleState == null) localSheetVisible = false else sheetVisibleState.value = false
+                                    next()
+                                } }
+                            )
                         }
                     }
 
@@ -1216,19 +1104,19 @@ fun BreakdownCard(state: UiState, viewModel: HoangViewModel, season: Season, res
                                 ToggleRow("Premium Active", settings.defaultSeason.premiumActive) { viewModel.updateSetting { it.copy(defaultSeason = it.defaultSeason.copy(premiumActive = !it.defaultSeason.premiumActive)) } }
                                 ToggleRow("Sell Leftover", settings.defaultSeason.sellLeftover) { viewModel.updateSetting { it.copy(defaultSeason = it.defaultSeason.copy(sellLeftover = !it.defaultSeason.sellLeftover)) } }
                                 DebouncedTextField(
-                                    settings.defaultSeason.returnRate.toString(),
-                                    { value -> viewModel.updateSetting { it.copy(defaultSeason = it.defaultSeason.copy(returnRate = Calculator.parseReturnRateDigits(value.filter(Char::isDigit)))) } },
+                                    java.math.BigDecimal(settings.defaultSeason.returnRate).stripTrailingZeros().toPlainString(),
+                                    { value -> viewModel.updateSetting { it.copy(defaultSeason = it.defaultSeason.copy(returnRate = java.math.BigDecimal.valueOf(Calculator.parseReturnRateDigits(value.filter(Char::isDigit))).stripTrailingZeros().toPlainString())) } },
                                     Modifier.fillMaxWidth(),
                                     "Return Rate"
                                 )
                                 DebouncedTextField(
-                                    settings.defaultSeason.costFeePer100?.toString().orEmpty(),
+                                    settings.defaultSeason.costFeePer100?.let { java.math.BigDecimal.valueOf(it).stripTrailingZeros().toPlainString() }.orEmpty(),
                                     { value -> viewModel.updateSetting { it.copy(defaultSeason = it.defaultSeason.copy(costFeePer100 = Calculator.parseNumber(value))) } },
                                     Modifier.fillMaxWidth(),
                                     "Nutrition fee /100"
                                 )
                                 DebouncedTextField(
-                                    settings.defaultSeason.finalOutputValue?.toString().orEmpty(),
+                                    settings.defaultSeason.finalOutputValue?.let { java.math.BigDecimal.valueOf(it).stripTrailingZeros().toPlainString() }.orEmpty(),
                                     { value -> viewModel.updateSetting { it.copy(defaultSeason = it.defaultSeason.copy(finalOutputValue = Calculator.parseNumber(value))) } },
                                     Modifier.fillMaxWidth(),
                                     "Item value (nutrition)"
